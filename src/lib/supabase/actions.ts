@@ -70,25 +70,6 @@ export async function signInWithEmail(email: string, password: string) {
   return { data, role, error: null };
 }
 
-export async function signInWithOtp(phone: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithOtp({ phone });
-  if (error) return { error: error.message };
-  return { error: null };
-}
-
-export async function verifyOtp(phone: string, token: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.verifyOtp({
-    phone,
-    token,
-    type: "sms",
-  });
-
-  if (error) return { error: error.message };
-  return { data, error: null };
-}
-
 export async function signInWithOAuth(provider: "google" | "apple") {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
