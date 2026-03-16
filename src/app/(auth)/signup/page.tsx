@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthInput from "@/components/auth/AuthInput";
 import OTPInput from "@/components/auth/OTPInput";
 import SocialLoginButtons from "@/components/auth/SocialLoginButtons";
+import { signUpWithEmail, signInWithOtp, verifyOtp } from "@/lib/supabase/actions";
 
 type AuthMethod = "email" | "phone";
 type Step = "details" | "verify";
 
 export default function SignupPage() {
+  const router = useRouter();
   const [method, setMethod] = useState<AuthMethod>("email");
   const [step, setStep] = useState<Step>("details");
 
@@ -20,6 +23,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -38,24 +42,74 @@ export default function SignupPage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
     setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+
+    try {
+      if (method === "email") {
+        const result = await signUpWithEmail(name, email, password);
+        if (result.error) {
+          setErrors({ email: result.error });
+          setLoading(false);
+          return;
+        }
+        // Email signup creates user + auto-confirms (for dev)
+        // In production, would send confirmation email and show verify step
+        setStep("verify");
+        setLoading(false);
+      } else {
+        // Phone signup: send OTP first
+        const result = await signInWithOtp(phone);
+        if (result.error) {
+          setErrors({ phone: result.error });
+          setLoading(false);
+          return;
+        }
+        setStep("verify");
+        setLoading(false);
+      }
+    } catch {
+      setErrors({ email: "Something went wrong. Please try again." });
       setLoading(false);
-      setStep("verify");
-    }, 800);
+    }
   };
 
-  const handleVerify = (code: string) => {
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleResend = useCallback(async () => {
+    if (resendCooldown > 0) return;
+    setResendCooldown(30);
+    if (method === "phone") {
+      await signInWithOtp(phone);
+    }
+  }, [phone, method, resendCooldown]);
+
+  const handleVerify = async (code: string) => {
     setLoading(true);
-    console.log("Verifying code:", code);
-    // Simulate verification → redirect to role selection
-    setTimeout(() => {
-      window.location.href = "/role-select";
-    }, 1000);
+    try {
+      if (method === "phone") {
+        const result = await verifyOtp(phone, code);
+        if (result.error) {
+          setErrors({ otp: result.error });
+          setLoading(false);
+          return;
+        }
+      }
+      // For email signup, Supabase auto-confirms in dev mode
+      // Redirect to role selection
+      router.push("/role-select");
+      router.refresh();
+    } catch {
+      setErrors({ otp: "Verification failed. Please try again." });
+      setLoading(false);
+    }
   };
 
   return (
@@ -217,8 +271,12 @@ export default function SignupPage() {
 
           <p className="mt-6 text-sm text-[var(--color-text-muted)]">
             Didn&apos;t receive the code?{" "}
-            <button className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer">
-              Resend
+            <button
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
+              className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend"}
             </button>
           </p>
 

@@ -1,11 +1,20 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, useEffect, useCallback, use } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import AddressInput from "@/components/booking/AddressInput";
 import TimeSlotPicker from "@/components/booking/TimeSlotPicker";
 import ItemDetails from "@/components/booking/ItemDetails";
 import QuoteDisplay from "@/components/booking/QuoteDisplay";
+import type { PricingBreakdown } from "@/components/booking/QuoteDisplay";
+import { getStripe } from "@/lib/stripe/client";
+import { calculateRouteDistance } from "@/lib/geocoding";
+import { createErrand } from "@/lib/supabase/actions";
+import type { Enums } from "@/types/database";
+
+const validTypes = ["returns", "handoffs", "collect"] as const;
 
 const typeLabels: Record<string, string> = {
   returns: "Returns & Drop-offs",
@@ -23,8 +32,90 @@ const steps = [
   { id: "locations", label: "Locations" },
   { id: "schedule", label: "Schedule" },
   { id: "details", label: "Details" },
-  { id: "review", label: "Review" },
+  { id: "review", label: "Review & Pay" },
 ];
+
+interface Coords {
+  lat: number;
+  lng: number;
+}
+
+// Inner form component that has access to Stripe context
+function PaymentForm({
+  onSuccess,
+  loading,
+  setLoading,
+}: {
+  onSuccess: (paymentIntentId: string) => void;
+  loading: boolean;
+  setLoading: (v: boolean) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!stripe || !elements) return;
+
+    setLoading(true);
+    setPaymentError(null);
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+    });
+
+    if (error) {
+      setPaymentError(error.message ?? "Payment failed");
+      setLoading(false);
+    } else if (paymentIntent) {
+      onSuccess(paymentIntent.id);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-[var(--color-border-light)] bg-white p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-light)]">
+          Payment method
+        </p>
+        <PaymentElement
+          options={{
+            layout: "tabs",
+          }}
+        />
+      </div>
+
+      {paymentError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {paymentError}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={loading || !stripe || !elements}
+        className="btn-primary w-full justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {loading ? (
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        ) : (
+          <>
+            Confirm &amp; Authorise Card
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </>
+        )}
+      </button>
+
+      <p className="text-center text-[10px] text-[var(--color-text-light)]">
+        Your card will be authorised now but only charged when the errand is completed.
+      </p>
+    </div>
+  );
+}
 
 export default function BookingWizardPage({
   params,
@@ -32,12 +123,32 @@ export default function BookingWizardPage({
   params: Promise<{ type: string }>;
 }) {
   const { type: errandType } = use(params);
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Location state
+  // Validate errand type — redirect to /book if invalid
+  const isValidType = validTypes.includes(errandType as (typeof validTypes)[number]);
+  useEffect(() => {
+    if (!isValidType) {
+      router.replace("/book");
+    }
+  }, [isValidType, router]);
+
+  if (!isValidType) {
+    return (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center text-center">
+        <p className="text-[var(--color-text-muted)]">Redirecting...</p>
+      </div>
+    );
+  }
+
+  // Location state — with coordinates
   const [pickup, setPickup] = useState("");
+  const [pickupCoords, setPickupCoords] = useState<Coords | null>(null);
   const [dropoff, setDropoff] = useState("");
+  const [dropoffCoords, setDropoffCoords] = useState<Coords | null>(null);
   const [extraStops, setExtraStops] = useState<string[]>([]);
+  const [extraStopCoords, setExtraStopCoords] = useState<(Coords | null)[]>([]);
   const [locationErrors, setLocationErrors] = useState<Record<string, string>>({});
 
   // Schedule state
@@ -49,18 +160,78 @@ export default function BookingWizardPage({
   const [itemValues, setItemValues] = useState<Record<string, string>>({});
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
 
-  // Loading
+  // Pricing state
+  const [pricing, setPricing] = useState<PricingBreakdown | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | undefined>(undefined);
+  const [pricingLoading, setPricingLoading] = useState(false);
+
+  // Payment state
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [errandId, setErrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   const totalStops = 2 + extraStops.length;
+
+  // Calculate distance and fetch pricing when coordinates change
+  const fetchPricing = useCallback(async () => {
+    if (!pickupCoords || !dropoffCoords) return;
+
+    const allStops: Coords[] = [
+      pickupCoords,
+      ...extraStopCoords.filter((c): c is Coords => c !== null),
+      dropoffCoords,
+    ];
+
+    const distance = calculateRouteDistance(allStops);
+    setDistanceKm(distance);
+
+    setPricingLoading(true);
+    try {
+      const res = await fetch("/api/pricing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: errandType,
+          distanceKm: distance,
+          isUrgent: false,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setPricing(data);
+      }
+    } catch {
+      // Pricing API failed — QuoteDisplay will show estimates
+    } finally {
+      setPricingLoading(false);
+    }
+  }, [pickupCoords, dropoffCoords, extraStopCoords, errandType]);
+
+  useEffect(() => {
+    fetchPricing();
+  }, [fetchPricing]);
 
   const validateStep = () => {
     if (currentStep === 0) {
       const errs: Record<string, string> = {};
-      if (!pickup.trim()) errs.pickup = "Pickup address is required";
-      if (!dropoff.trim()) errs.dropoff = "Drop-off address is required";
+      if (!pickup.trim()) {
+        errs.pickup = "Pickup address is required";
+      } else if (!pickupCoords) {
+        errs.pickup = "Please select a pickup address from the suggestions";
+      }
+      if (!dropoff.trim()) {
+        errs.dropoff = "Drop-off address is required";
+      } else if (!dropoffCoords) {
+        errs.dropoff = "Please select a drop-off address from the suggestions";
+      }
       extraStops.forEach((s, i) => {
-        if (!s.trim()) errs[`stop-${i}`] = "Address required or remove this stop";
+        if (!s.trim()) {
+          errs[`stop-${i}`] = "Address required or remove this stop";
+        } else if (!extraStopCoords[i]) {
+          errs[`stop-${i}`] = "Please select an address from the suggestions";
+        }
       });
       setLocationErrors(errs);
       return Object.keys(errs).length === 0;
@@ -86,8 +257,14 @@ export default function BookingWizardPage({
     return true;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!validateStep()) return;
+
+    // When moving to review step (step 3), create errand + payment intent
+    if (currentStep === 2) {
+      await createErrandAndPaymentIntent();
+    }
+
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
@@ -97,21 +274,105 @@ export default function BookingWizardPage({
     if (currentStep > 0) setCurrentStep(currentStep - 1);
   };
 
-  const handleConfirm = () => {
+  const createErrandAndPaymentIntent = async () => {
     setLoading(true);
-    setTimeout(() => {
-      window.location.href = "/book/confirm";
-    }, 800);
+    setBookingError(null);
+
+    try {
+      const [slotStart, slotEnd] = selectedSlot.split("-");
+
+      // Use real pricing if available, otherwise estimate
+      const totalPrice = pricing
+        ? pricing.totalPrice + Math.max(0, totalStops - 2) * 3
+        : 12.0;
+      const baseFee = pricing?.baseFee ?? 7;
+      const distanceFee = pricing?.distanceFee ?? 2.5;
+      const urgencyFee = pricing?.urgencyFee ?? 0;
+      const platformFee = pricing?.platformFee ?? totalPrice * 0.2;
+      const runnerPayout = pricing?.runnerPayout ?? totalPrice * 0.8;
+
+      // 1. Create the errand in Supabase
+      const errandResult = await createErrand({
+        type: errandType as Enums<"errand_type">,
+        pickup_address: pickup,
+        pickup_lat: pickupCoords?.lat ?? 53.3498,
+        pickup_lng: pickupCoords?.lng ?? -6.2603,
+        dropoff_address: dropoff,
+        dropoff_lat: dropoffCoords?.lat ?? 53.3498,
+        dropoff_lng: dropoffCoords?.lng ?? -6.2603,
+        distance_km: distanceKm ?? 0,
+        scheduled_date: selectedDate,
+        time_slot_start: slotStart,
+        time_slot_end: slotEnd,
+        item_description: itemValues.itemDescription,
+        package_size: itemValues.packageSize ?? null,
+        tracking_number: itemValues.trackingNumber ?? null,
+        recipient_name: itemValues.recipientName ?? null,
+        order_number: itemValues.orderNumber ?? null,
+        collection_name: itemValues.collectionName ?? null,
+        special_instructions: itemValues.specialInstructions ?? null,
+        base_fee: baseFee,
+        distance_fee: distanceFee,
+        urgency_fee: urgencyFee,
+        total_price: totalPrice,
+        platform_fee: platformFee,
+        runner_payout: runnerPayout,
+        customer_id: "", // Will be set by the server action
+      });
+
+      if (errandResult.error || !errandResult.data) {
+        setBookingError(errandResult.error ?? "Failed to create errand");
+        setLoading(false);
+        return;
+      }
+
+      setErrandId(errandResult.data.id);
+
+      // 2. Create Stripe PaymentIntent (authorize-then-capture)
+      // Idempotency key prevents duplicate charges on retries
+      const idempotencyKey = `pi_${errandResult.data.id}_${Date.now()}`;
+      const paymentRes = await fetch("/api/stripe/create-payment-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: totalPrice,
+          errandId: errandResult.data.id,
+          errandDisplayId: errandResult.data.display_id,
+          idempotencyKey,
+        }),
+      });
+
+      if (!paymentRes.ok) {
+        setBookingError("Failed to set up payment");
+        setLoading(false);
+        return;
+      }
+
+      const { clientSecret: secret } = await paymentRes.json();
+      setClientSecret(secret);
+    } catch (err) {
+      setBookingError("Something went wrong. Please try again.");
+      console.error("Booking error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePaymentSuccess = (paymentIntentId: string) => {
+    // Redirect to confirmation page with errand ID
+    window.location.href = `/book/confirm?errand=${errandId}&pi=${paymentIntentId}`;
   };
 
   const addStop = () => {
     if (extraStops.length < 1) {
       setExtraStops([...extraStops, ""]);
+      setExtraStopCoords([...extraStopCoords, null]);
     }
   };
 
   const removeStop = (index: number) => {
     setExtraStops(extraStops.filter((_, i) => i !== index));
+    setExtraStopCoords(extraStopCoords.filter((_, i) => i !== index));
   };
 
   const color = typeColors[errandType] || "var(--color-copper)";
@@ -197,7 +458,12 @@ export default function BookingWizardPage({
                   label="Pickup address"
                   placeholder="Where should the runner pick up?"
                   value={pickup}
-                  onChange={(v) => { setPickup(v); setLocationErrors((e) => ({ ...e, pickup: "" })); }}
+                  onChange={(v, coords) => {
+                    setPickup(v);
+                    if (coords) setPickupCoords(coords);
+                    else setPickupCoords(null);
+                    setLocationErrors((e) => ({ ...e, pickup: "" }));
+                  }}
                   error={locationErrors.pickup}
                   icon="pickup"
                 />
@@ -209,10 +475,13 @@ export default function BookingWizardPage({
                       label={`Stop ${i + 2}`}
                       placeholder="Additional stop address"
                       value={stop}
-                      onChange={(v) => {
-                        const updated = [...extraStops];
-                        updated[i] = v;
-                        setExtraStops(updated);
+                      onChange={(v, coords) => {
+                        const updatedStops = [...extraStops];
+                        updatedStops[i] = v;
+                        setExtraStops(updatedStops);
+                        const updatedCoords = [...extraStopCoords];
+                        updatedCoords[i] = coords ?? null;
+                        setExtraStopCoords(updatedCoords);
                         setLocationErrors((e) => ({ ...e, [`stop-${i}`]: "" }));
                       }}
                       error={locationErrors[`stop-${i}`]}
@@ -232,7 +501,12 @@ export default function BookingWizardPage({
                   label="Drop-off address"
                   placeholder="Where should the runner deliver?"
                   value={dropoff}
-                  onChange={(v) => { setDropoff(v); setLocationErrors((e) => ({ ...e, dropoff: "" })); }}
+                  onChange={(v, coords) => {
+                    setDropoff(v);
+                    if (coords) setDropoffCoords(coords);
+                    else setDropoffCoords(null);
+                    setLocationErrors((e) => ({ ...e, dropoff: "" }));
+                  }}
                   error={locationErrors.dropoff}
                   icon="dropoff"
                 />
@@ -306,7 +580,7 @@ export default function BookingWizardPage({
               </motion.div>
             )}
 
-            {/* Step 4: Review */}
+            {/* Step 4: Review & Pay */}
             {currentStep === 3 && (
               <motion.div
                 key="review"
@@ -319,7 +593,7 @@ export default function BookingWizardPage({
                   className="mb-6 text-xl font-bold text-[var(--color-charcoal)]"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
-                  Review your errand
+                  Review &amp; pay
                 </h2>
 
                 <div className="space-y-4">
@@ -332,19 +606,24 @@ export default function BookingWizardPage({
                     <div className="space-y-2 text-sm">
                       <div className="flex items-start gap-2">
                         <span className="mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-green-400" />
-                        <span className="text-[var(--color-text)]">{pickup}</span>
+                        <span className="text-[var(--color-text)] line-clamp-1">{pickup}</span>
                       </div>
                       {extraStops.map((s, i) => (
                         <div key={i} className="flex items-start gap-2">
                           <span className="mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-[var(--color-copper)]" />
-                          <span className="text-[var(--color-text)]">{s}</span>
+                          <span className="text-[var(--color-text)] line-clamp-1">{s}</span>
                         </div>
                       ))}
                       <div className="flex items-start gap-2">
                         <span className="mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-red-400" />
-                        <span className="text-[var(--color-text)]">{dropoff}</span>
+                        <span className="text-[var(--color-text)] line-clamp-1">{dropoff}</span>
                       </div>
                     </div>
+                    {distanceKm && (
+                      <p className="mt-2 text-xs text-[var(--color-text-light)]">
+                        Estimated distance: {distanceKm.toFixed(1)} km
+                      </p>
+                    )}
                   </div>
 
                   {/* Schedule summary */}
@@ -378,41 +657,65 @@ export default function BookingWizardPage({
                       {itemValues.specialInstructions && <p><span className="text-[var(--color-text-muted)]">Notes:</span> {itemValues.specialInstructions}</p>}
                     </div>
                   </div>
+
+                  {/* Error display */}
+                  {bookingError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                      {bookingError}
+                    </div>
+                  )}
+
+                  {/* Payment Element */}
+                  {clientSecret ? (
+                    <Elements
+                      stripe={getStripe()}
+                      options={{
+                        clientSecret,
+                        appearance: {
+                          theme: "stripe",
+                          variables: {
+                            colorPrimary: "#c47a5a",
+                            borderRadius: "12px",
+                          },
+                        },
+                      }}
+                    >
+                      <PaymentForm
+                        onSuccess={handlePaymentSuccess}
+                        loading={loading}
+                        setLoading={setLoading}
+                      />
+                    </Elements>
+                  ) : loading ? (
+                    <div className="flex items-center justify-center gap-3 rounded-xl border border-[var(--color-border-light)] bg-white px-4 py-8">
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-copper)]" />
+                      <span className="text-sm text-[var(--color-text-muted)]">Setting up payment...</span>
+                    </div>
+                  ) : null}
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Navigation buttons */}
-          <div className="mt-8 flex items-center gap-3">
-            {currentStep > 0 && (
-              <button
-                type="button"
-                onClick={handleBack}
-                className="flex items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-medium text-[var(--color-text)] transition-all hover:bg-[var(--color-cream)] cursor-pointer"
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Back
-              </button>
-            )}
+          {/* Navigation buttons — hidden on review step since payment form has its own button */}
+          {currentStep < steps.length - 1 && (
+            <div className="mt-8 flex items-center gap-3">
+              {currentStep > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="flex items-center gap-1.5 rounded-xl border border-[var(--color-border)] bg-white px-5 py-3 text-sm font-medium text-[var(--color-text)] transition-all hover:bg-[var(--color-cream)] cursor-pointer"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Back
+                </button>
+              )}
 
-            {currentStep < steps.length - 1 ? (
               <button
                 type="button"
                 onClick={handleNext}
-                className="btn-primary flex-1 justify-center sm:flex-none"
-              >
-                Continue
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleConfirm}
                 disabled={loading}
                 className="btn-primary flex-1 justify-center sm:flex-none disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -420,27 +723,48 @@ export default function BookingWizardPage({
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                 ) : (
                   <>
-                    Confirm &amp; Book
+                    Continue
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                      <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </>
                 )}
               </button>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Quote sidebar (visible from step 1+) */}
-        <div className="lg:w-[320px] lg:flex-shrink-0">
-          {currentStep >= 0 && (
-            <div className="sticky top-24">
-              <QuoteDisplay
-                errandType={errandType}
-                stops={totalStops}
-              />
             </div>
           )}
+
+          {/* Back button on review step */}
+          {currentStep === 3 && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Back to details
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right: Quote sidebar */}
+        <div className="lg:w-[320px] lg:flex-shrink-0">
+          <div className="sticky top-24">
+            <QuoteDisplay
+              errandType={errandType}
+              stops={totalStops}
+              pricing={pricing}
+              distanceKm={distanceKm}
+              isLoading={pricingLoading}
+              pickup={pickup}
+              dropoff={dropoff}
+              hasPickupCoords={!!pickupCoords}
+              hasDropoffCoords={!!dropoffCoords}
+            />
+          </div>
         </div>
       </div>
     </div>

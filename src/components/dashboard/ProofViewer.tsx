@@ -9,7 +9,8 @@ interface ProofPhoto {
   label: string;
   timestamp: string;
   gps: string;
-  placeholder: string; // Color for mock placeholder
+  placeholder: string; // Color for fallback placeholder
+  imageUrl?: string; // Supabase Storage public URL
 }
 
 interface Props {
@@ -49,15 +50,22 @@ export default function ProofViewer({ photos }: Props) {
               onClick={() => setSelectedIdx(i)}
               className="group relative aspect-[4/3] overflow-hidden rounded-xl cursor-pointer"
             >
-              {/* Mock photo placeholder */}
-              <div className={`absolute inset-0 ${photo.placeholder} flex items-center justify-center`}>
-                <div className="text-center text-white/80">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-1">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
-                  </svg>
-                  <span className="text-[10px] font-medium">{photo.label}</span>
+              {photo.imageUrl ? (
+                <img
+                  src={photo.imageUrl}
+                  alt={photo.label}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className={`absolute inset-0 ${photo.placeholder} flex items-center justify-center`}>
+                  <div className="text-center text-white/80">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-1">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    <span className="text-[10px] font-medium">{photo.label}</span>
+                  </div>
                 </div>
-              </div>
+              )}
               {/* Hover overlay */}
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -92,15 +100,22 @@ export default function ProofViewer({ photos }: Props) {
               className="relative w-full max-w-lg"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Mock photo */}
-              <div className={`aspect-[4/3] rounded-2xl ${photos[selectedIdx].placeholder} flex items-center justify-center`}>
-                <div className="text-center text-white/80">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
-                  </svg>
-                  <p className="text-sm font-medium">{photos[selectedIdx].label}</p>
+              {photos[selectedIdx].imageUrl ? (
+                <img
+                  src={photos[selectedIdx].imageUrl}
+                  alt={photos[selectedIdx].label}
+                  className="aspect-[4/3] w-full rounded-2xl object-cover"
+                />
+              ) : (
+                <div className={`aspect-[4/3] rounded-2xl ${photos[selectedIdx].placeholder} flex items-center justify-center`}>
+                  <div className="text-center text-white/80">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    <p className="text-sm font-medium">{photos[selectedIdx].label}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Photo info */}
               <div className="mt-3 flex items-center justify-between text-sm text-white/70">

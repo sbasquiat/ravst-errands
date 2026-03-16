@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 
 const stagger = {
@@ -79,12 +80,12 @@ export default function Hero() {
             </motion.p>
 
             <motion.div variants={fadeUp} className="mt-10 flex flex-wrap gap-4">
-              <button className="btn-primary text-base">
+              <Link href="/book" className="btn-primary text-base">
                 Book Your First Errand
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </button>
+              </Link>
               <button
                 className="btn-secondary text-base"
                 onClick={() =>

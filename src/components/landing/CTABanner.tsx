@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import ScrollReveal from "@/components/ui/ScrollReveal";
 
 export default function CTABanner() {
@@ -27,15 +28,21 @@ export default function CTABanner() {
                 it&apos;s done.
               </p>
               <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-                <button className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-[0.9375rem] font-semibold text-[var(--color-copper-hover)] transition-all duration-300 hover:bg-white/90 hover:shadow-[0_8px_30px_-8px_rgba(0,0,0,0.2)] cursor-pointer">
+                <Link
+                  href="/book"
+                  className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-[0.9375rem] font-semibold text-[var(--color-copper-hover)] transition-all duration-300 hover:bg-white/90 hover:shadow-[0_8px_30px_-8px_rgba(0,0,0,0.2)]"
+                >
                   Book an Errand
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                </button>
-                <button className="inline-flex items-center gap-2 rounded-full border border-white/30 px-8 py-3.5 text-[0.9375rem] font-semibold text-white transition-all duration-300 hover:bg-white/10 hover:border-white/50 cursor-pointer">
+                </Link>
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/30 px-8 py-3.5 text-[0.9375rem] font-semibold text-white transition-all duration-300 hover:bg-white/10 hover:border-white/50"
+                >
                   See Pricing
-                </button>
+                </Link>
               </div>
             </div>
           </div>

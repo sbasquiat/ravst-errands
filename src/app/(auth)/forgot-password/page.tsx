@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthInput from "@/components/auth/AuthInput";
-import OTPInput from "@/components/auth/OTPInput";
+import { resetPasswordRequest, updatePassword } from "@/lib/supabase/actions";
 
-type Step = "email" | "code" | "reset" | "done";
+type Step = "email" | "sent" | "reset" | "done";
 
-export default function ForgotPasswordPage() {
+function ForgotPasswordContent() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,7 +17,14 @@ export default function ForgotPasswordPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
 
-  const handleSendCode = (e: React.FormEvent) => {
+  // If user arrives via reset link from email, jump to reset step
+  useEffect(() => {
+    if (searchParams.get("step") === "reset") {
+      setStep("reset");
+    }
+  }, [searchParams]);
+
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
     if (!email.trim()) errs.email = "Email is required";
@@ -24,22 +33,18 @@ export default function ForgotPasswordPage() {
     if (Object.keys(errs).length > 0) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setStep("code");
-    }, 800);
+    const result = await resetPasswordRequest(email);
+    setLoading(false);
+
+    if (result.error) {
+      setErrors({ email: result.error });
+      return;
+    }
+
+    setStep("sent");
   };
 
-  const handleVerifyCode = (code: string) => {
-    console.log("Reset OTP:", code);
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setStep("reset");
-    }, 800);
-  };
-
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
     if (!password) errs.password = "Password is required";
@@ -50,10 +55,15 @@ export default function ForgotPasswordPage() {
     if (Object.keys(errs).length > 0) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setStep("done");
-    }, 800);
+    const result = await updatePassword(password);
+    setLoading(false);
+
+    if (result.error) {
+      setErrors({ password: result.error });
+      return;
+    }
+
+    setStep("done");
   };
 
   return (
@@ -123,10 +133,10 @@ export default function ForgotPasswordPage() {
         </motion.div>
       )}
 
-      {/* Step 2: Enter OTP code */}
-      {step === "code" && (
+      {/* Step 2: Email sent confirmation */}
+      {step === "sent" && (
         <motion.div
-          key="code"
+          key="sent"
           initial={{ opacity: 0, x: 10 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 10 }}
@@ -147,25 +157,30 @@ export default function ForgotPasswordPage() {
             Check your email
           </h1>
           <p className="mt-2 mb-8 text-sm text-[var(--color-text-muted)]">
-            We sent a 6-digit code to{" "}
+            We sent a password reset link to{" "}
             <span className="font-medium text-[var(--color-text)]">{email}</span>
           </p>
 
-          <OTPInput onComplete={handleVerifyCode} />
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Click the link in the email to set a new password. The link will expire in 1 hour.
+          </p>
 
           <p className="mt-6 text-sm text-[var(--color-text-muted)]">
-            Didn&apos;t receive the code?{" "}
-            <button className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer">
-              Resend
+            Didn&apos;t receive the email?{" "}
+            <button
+              onClick={() => setStep("email")}
+              className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer"
+            >
+              Try again
             </button>
           </p>
 
-          <button
-            onClick={() => setStep("email")}
-            className="mt-4 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+          <a
+            href="/login"
+            className="mt-4 inline-block text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
           >
-            &larr; Try a different email
-          </button>
+            &larr; Back to login
+          </a>
         </motion.div>
       )}
 
@@ -269,5 +284,13 @@ export default function ForgotPasswordPage() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<div className="h-64 flex items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-copper)]/30 border-t-[var(--color-copper)]" /></div>}>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }

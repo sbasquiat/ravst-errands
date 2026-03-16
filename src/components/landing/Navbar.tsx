@@ -1,18 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 
 const navLinks = [
-  { label: "How It Works", href: "#how-it-works" },
-  { label: "Services", href: "#services" },
-  { label: "Pricing", href: "#pricing" },
-  { label: "Trust", href: "#trust" },
+  { label: "How It Works", href: "/how-it-works", anchor: "#how-it-works" },
+  { label: "Services", href: "/#services", anchor: "#services" },
+  { label: "Pricing", href: "/pricing", anchor: "#pricing" },
+  { label: "Trust", href: "/#trust", anchor: "#trust" },
 ];
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const isLanding = pathname === "/";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -25,10 +30,17 @@ export default function Navbar() {
     return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  const handleNavClick = (href: string) => {
+  const handleNavClick = (link: typeof navLinks[number]) => {
     setMobileOpen(false);
-    const el = document.querySelector(href);
-    el?.scrollIntoView({ behavior: "smooth" });
+
+    if (isLanding) {
+      // On landing page, smooth scroll to anchor
+      const el = document.querySelector(link.anchor);
+      el?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      // On other pages, navigate to the page or landing anchor
+      router.push(link.href);
+    }
   };
 
   return (
@@ -45,21 +57,21 @@ export default function Navbar() {
       >
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
           {/* Logo */}
-          <a
-            href="#"
+          <Link
+            href="/"
             className="relative z-10 font-[var(--font-display)] text-2xl font-800 tracking-tight"
             style={{ fontFamily: "var(--font-display)" }}
           >
             <span className="text-[var(--color-charcoal)]">ravst</span>
             <span className="text-[var(--color-copper)]">.</span>
-          </a>
+          </Link>
 
           {/* Desktop nav */}
           <div className="hidden items-center gap-1 md:flex">
             {navLinks.map((link) => (
               <button
-                key={link.href}
-                onClick={() => handleNavClick(link.href)}
+                key={link.label}
+                onClick={() => handleNavClick(link)}
                 className="relative px-4 py-2 text-[0.9375rem] font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] cursor-pointer"
               >
                 {link.label}
@@ -69,12 +81,15 @@ export default function Navbar() {
 
           {/* Desktop CTAs */}
           <div className="hidden items-center gap-3 md:flex">
-            <button className="px-4 py-2 text-[0.9375rem] font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] cursor-pointer">
+            <Link
+              href="/login"
+              className="px-4 py-2 text-[0.9375rem] font-medium text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
+            >
               Log In
-            </button>
-            <button className="btn-primary !py-2.5 !px-5 !text-sm">
+            </Link>
+            <Link href="/book" className="btn-primary !py-2.5 !px-5 !text-sm">
               Book an Errand
-            </button>
+            </Link>
           </div>
 
           {/* Mobile hamburger */}
@@ -117,11 +132,11 @@ export default function Navbar() {
             <nav className="flex flex-col items-center gap-2">
               {navLinks.map((link, i) => (
                 <motion.button
-                  key={link.href}
+                  key={link.label}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.08, duration: 0.4 }}
-                  onClick={() => handleNavClick(link.href)}
+                  onClick={() => handleNavClick(link)}
                   className="py-3 text-3xl font-semibold text-[var(--color-charcoal)] cursor-pointer"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
@@ -134,12 +149,20 @@ export default function Navbar() {
                 transition={{ delay: 0.35, duration: 0.4 }}
                 className="mt-8 flex flex-col items-center gap-4"
               >
-                <button className="text-lg font-medium text-[var(--color-text-muted)] cursor-pointer">
+                <Link
+                  href="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-lg font-medium text-[var(--color-text-muted)]"
+                >
                   Log In
-                </button>
-                <button className="btn-primary text-lg">
+                </Link>
+                <Link
+                  href="/book"
+                  onClick={() => setMobileOpen(false)}
+                  className="btn-primary text-lg"
+                >
                   Book an Errand
-                </button>
+                </Link>
               </motion.div>
             </nav>
           </motion.div>

@@ -1,25 +1,22 @@
+import Link from "next/link";
+
 const footerLinks = {
   product: [
-    { label: "How It Works", href: "#how-it-works" },
-    { label: "Services", href: "#services" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "Trust & Safety", href: "#trust" },
+    { label: "How It Works", href: "/how-it-works" },
+    { label: "Services", href: "/#services" },
+    { label: "Pricing", href: "/pricing" },
+    { label: "Trust & Safety", href: "/#trust" },
   ],
   company: [
-    { label: "About", href: "#" },
-    { label: "Careers", href: "#" },
-    { label: "Blog", href: "#" },
-    { label: "Contact", href: "#" },
-  ],
-  runners: [
-    { label: "Become a Runner", href: "#" },
-    { label: "Runner App", href: "#" },
-    { label: "Runner Support", href: "#" },
+    { label: "About", href: "/about" },
+    { label: "Careers", href: "/careers" },
+    { label: "Become a Runner", href: "/careers" },
+    { label: "Contact", href: "/contact" },
   ],
   legal: [
-    { label: "Terms of Service", href: "#" },
-    { label: "Privacy Policy", href: "#" },
-    { label: "Cookie Policy", href: "#" },
+    { label: "Terms of Service", href: "/terms" },
+    { label: "Privacy Policy", href: "/privacy" },
+    { label: "Cookie Policy", href: "/cookies" },
   ],
 };
 
@@ -27,17 +24,17 @@ export default function Footer() {
   return (
     <footer className="bg-[var(--color-charcoal)] pt-16 pb-8">
       <div className="mx-auto max-w-7xl px-6 lg:px-8">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5 mb-14">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4 mb-14">
           {/* Brand */}
-          <div className="lg:col-span-2">
-            <a
-              href="#"
+          <div className="lg:col-span-1">
+            <Link
+              href="/"
               className="inline-block text-2xl font-800 tracking-tight"
               style={{ fontFamily: "var(--font-display)" }}
             >
               <span className="text-white">ravst</span>
               <span className="text-[var(--color-copper)]">.</span>
-            </a>
+            </Link>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/40">
               Trust-first errand service. Vetted runners, photo proof,
               GPS verification. Your errands, handled with certainty.
@@ -55,7 +52,15 @@ export default function Footer() {
               {["twitter", "instagram", "linkedin"].map((social) => (
                 <a
                   key={social}
-                  href="#"
+                  href={
+                    social === "twitter"
+                      ? "https://x.com/ravst.ie"
+                      : social === "instagram"
+                      ? "https://instagram.com/ravst.ie"
+                      : "https://linkedin.com/company/ravst"
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white/40 transition-all hover:border-white/20 hover:text-white/60"
                   aria-label={social}
                 >
@@ -81,9 +86,9 @@ export default function Footer() {
             <ul className="space-y-2.5">
               {footerLinks.product.map((link) => (
                 <li key={link.label}>
-                  <a href={link.href} className="text-sm text-white/40 transition-colors hover:text-white/70">
+                  <Link href={link.href} className="text-sm text-white/40 transition-colors hover:text-white/70">
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -95,23 +100,23 @@ export default function Footer() {
             <ul className="space-y-2.5">
               {footerLinks.company.map((link) => (
                 <li key={link.label}>
-                  <a href={link.href} className="text-sm text-white/40 transition-colors hover:text-white/70">
+                  <Link href={link.href} className="text-sm text-white/40 transition-colors hover:text-white/70">
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
           </div>
           <div>
             <h4 className="mb-4 text-xs font-semibold uppercase tracking-[0.15em] text-white/50">
-              Runners
+              Legal
             </h4>
             <ul className="space-y-2.5">
-              {footerLinks.runners.map((link) => (
+              {footerLinks.legal.map((link) => (
                 <li key={link.label}>
-                  <a href={link.href} className="text-sm text-white/40 transition-colors hover:text-white/70">
+                  <Link href={link.href} className="text-sm text-white/40 transition-colors hover:text-white/70">
                     {link.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -125,9 +130,9 @@ export default function Footer() {
           </p>
           <div className="flex gap-6">
             {footerLinks.legal.map((link) => (
-              <a key={link.label} href={link.href} className="text-xs text-white/25 transition-colors hover:text-white/40">
+              <Link key={link.label} href={link.href} className="text-xs text-white/25 transition-colors hover:text-white/40">
                 {link.label}
-              </a>
+              </Link>
             ))}
           </div>
         </div>

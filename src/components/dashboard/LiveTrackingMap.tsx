@@ -1,16 +1,129 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import dynamic from "next/dynamic";
+import L from "leaflet";
+import { useRunnerLocation } from "@/lib/tracking/location-subscriber";
+
+// Dynamically import Map to avoid SSR issues with Leaflet
+const MapComponent = dynamic(() => import("@/components/maps/Map"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 bg-[var(--color-cream)] flex items-center justify-center">
+      <div className="text-sm text-[var(--color-text-muted)]">Loading map...</div>
+    </div>
+  ),
+});
 
 interface Props {
+  errandId: string;
   runnerName: string;
   runnerInitials: string;
+  runnerRating: number;
   pickup: string;
   dropoff: string;
+  pickupLat: number;
+  pickupLng: number;
+  dropoffLat: number;
+  dropoffLng: number;
 }
 
-export default function LiveTrackingMap({ runnerName, runnerInitials, pickup, dropoff }: Props) {
+function createDotIcon(color: string, size = 12) {
+  return L.divIcon({
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};box-shadow:0 0 0 4px ${color}33;"></div>`,
+  });
+}
+
+function createRunnerIcon(initials: string) {
+  return L.divIcon({
+    className: "",
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    html: `<div style="width:32px;height:32px;border-radius:50%;background:#c27a4a;color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3),0 0 0 4px rgba(194,122,74,0.2);transition:all 0.5s ease;">${initials}</div>`,
+  });
+}
+
+export default function LiveTrackingMap({
+  errandId,
+  runnerName,
+  runnerInitials,
+  runnerRating,
+  pickup,
+  dropoff,
+  pickupLat,
+  pickupLng,
+  dropoffLat,
+  dropoffLng,
+}: Props) {
   const [trackingOn, setTrackingOn] = useState(true);
+  const mapRef = useRef<L.Map | null>(null);
+  const runnerMarkerRef = useRef<L.Marker | null>(null);
+  const runnerPosition = useRunnerLocation(trackingOn ? errandId : null);
+
+  const center = useMemo<[number, number]>(
+    () => [(pickupLat + dropoffLat) / 2, (pickupLng + dropoffLng) / 2],
+    [pickupLat, pickupLng, dropoffLat, dropoffLng]
+  );
+
+  const handleMapReady = (map: L.Map) => {
+    mapRef.current = map;
+
+    // Pickup marker
+    L.marker([pickupLat, pickupLng], { icon: createDotIcon("#22c55e") })
+      .addTo(map)
+      .bindTooltip(pickup.split(",")[0] || "Pickup", {
+        permanent: false,
+        direction: "top",
+      });
+
+    // Dropoff marker
+    L.marker([dropoffLat, dropoffLng], { icon: createDotIcon("#ef4444") })
+      .addTo(map)
+      .bindTooltip(dropoff.split(",")[0] || "Drop-off", {
+        permanent: false,
+        direction: "top",
+      });
+
+    // Dashed route line
+    L.polyline(
+      [
+        [pickupLat, pickupLng],
+        [dropoffLat, dropoffLng],
+      ],
+      {
+        color: "#c27a4a",
+        weight: 3,
+        dashArray: "8 6",
+        opacity: 0.5,
+      }
+    ).addTo(map);
+
+    // Fit bounds to show both markers
+    const bounds = L.latLngBounds([
+      [pickupLat, pickupLng],
+      [dropoffLat, dropoffLng],
+    ]);
+    map.fitBounds(bounds, { padding: [40, 40] });
+  };
+
+  // Update runner marker when position changes
+  useEffect(() => {
+    if (!mapRef.current || !runnerPosition) return;
+
+    const pos: [number, number] = [runnerPosition.lat, runnerPosition.lng];
+
+    if (runnerMarkerRef.current) {
+      runnerMarkerRef.current.setLatLng(pos);
+    } else {
+      runnerMarkerRef.current = L.marker(pos, {
+        icon: createRunnerIcon(runnerInitials),
+        zIndexOffset: 1000,
+      }).addTo(mapRef.current);
+    }
+  }, [runnerPosition, runnerInitials]);
 
   return (
     <div className="rounded-2xl border border-[var(--color-border-light)] bg-white overflow-hidden">
@@ -31,72 +144,30 @@ export default function LiveTrackingMap({ runnerName, runnerInitials, pickup, dr
       </div>
 
       {trackingOn ? (
-        <div className="relative h-64 bg-[#e8e4dc]">
-          {/* Mock map with styled placeholder */}
-          <div className="absolute inset-0 overflow-hidden">
-            {/* Grid lines to simulate a map */}
-            <div className="absolute inset-0 opacity-20">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={`h-${i}`} className="absolute left-0 right-0 border-t border-[var(--color-text-light)]" style={{ top: `${(i + 1) * 12}%` }} />
-              ))}
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={`v-${i}`} className="absolute top-0 bottom-0 border-l border-[var(--color-text-light)]" style={{ left: `${(i + 1) * 16}%` }} />
-              ))}
-            </div>
-
-            {/* Fake route path */}
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 256" fill="none">
-              <path
-                d="M100 200 C 130 180, 160 120, 200 100 S 280 60, 320 80"
-                stroke="var(--color-copper)"
-                strokeWidth="3"
-                strokeDasharray="8 4"
-                opacity="0.6"
-              />
-            </svg>
-
-            {/* Pickup marker */}
-            <div className="absolute" style={{ left: "22%", top: "72%" }}>
-              <div className="flex flex-col items-center">
-                <div className="h-3 w-3 rounded-full bg-green-500 ring-4 ring-green-500/20" />
-                <div className="mt-1 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-[var(--color-text)] shadow-sm whitespace-nowrap">
-                  Pickup
-                </div>
-              </div>
-            </div>
-
-            {/* Drop-off marker */}
-            <div className="absolute" style={{ left: "76%", top: "26%" }}>
-              <div className="flex flex-col items-center">
-                <div className="h-3 w-3 rounded-full bg-red-500 ring-4 ring-red-500/20" />
-                <div className="mt-1 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-[var(--color-text)] shadow-sm whitespace-nowrap">
-                  Drop-off
-                </div>
-              </div>
-            </div>
-
-            {/* Runner marker (animated) */}
-            <div className="absolute animate-bounce" style={{ left: "48%", top: "42%", animationDuration: "2s" }}>
-              <div className="flex flex-col items-center">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-copper)] text-[10px] font-bold text-white ring-4 ring-[var(--color-copper)]/20 shadow-lg">
-                  {runnerInitials}
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="relative">
+          <MapComponent
+            center={center}
+            zoom={14}
+            className="h-64"
+            onMapReady={handleMapReady}
+          />
 
           {/* Runner info overlay */}
-          <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3 rounded-xl bg-white/95 backdrop-blur-sm p-3 shadow-sm">
+          <div className="absolute bottom-3 left-3 right-3 z-[1000] flex items-center gap-3 rounded-xl bg-white/95 backdrop-blur-sm p-3 shadow-sm">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-copper)]/10 text-sm font-bold text-[var(--color-copper)]">
               {runnerInitials}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-[var(--color-charcoal)]">{runnerName}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">En route to drop-off · ~8 min away</p>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {runnerPosition ? "Live tracking active" : "Waiting for location..."}
+              </p>
             </div>
             <div className="flex items-center gap-1 text-xs font-medium text-amber-600">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
-              4.9
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              {runnerRating.toFixed(1)}
             </div>
           </div>
         </div>
@@ -105,7 +176,8 @@ export default function LiveTrackingMap({ runnerName, runnerInitials, pickup, dr
           <div className="text-center">
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-light)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
               </svg>
             </div>
             <p className="text-sm text-[var(--color-text-muted)]">Tracking paused</p>

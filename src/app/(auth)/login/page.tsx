@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthInput from "@/components/auth/AuthInput";
 import OTPInput from "@/components/auth/OTPInput";
 import SocialLoginButtons from "@/components/auth/SocialLoginButtons";
+import { signInWithEmail, signInWithOtp, verifyOtp } from "@/lib/supabase/actions";
 
 type AuthMethod = "email" | "phone";
 
-export default function LoginPage() {
+function LoginContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
+
   const [method, setMethod] = useState<AuthMethod>("email");
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
 
@@ -17,6 +23,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -30,27 +37,73 @@ export default function LoginPage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+
+    try {
       if (method === "phone") {
+        const result = await signInWithOtp(phone);
+        if (result.error) {
+          setErrors({ phone: result.error });
+          setLoading(false);
+          return;
+        }
         setStep("otp");
+        setLoading(false);
       } else {
-        // Simulate email login → dashboard
-        window.location.href = "/dashboard";
+        const result = await signInWithEmail(email, password);
+        if (result.error) {
+          setErrors({ email: result.error });
+          setLoading(false);
+          return;
+        }
+        // Redirect based on role
+        const dest = redirectTo
+          ? redirectTo
+          : result.role === "runner"
+            ? "/runner"
+            : result.role === "admin"
+              ? "/admin"
+              : "/dashboard";
+        router.push(dest);
+        router.refresh();
       }
-    }, 800);
+    } catch {
+      setErrors({ email: "Something went wrong. Please try again." });
+      setLoading(false);
+    }
   };
 
-  const handleVerify = (code: string) => {
-    console.log("OTP:", code);
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const handleResend = useCallback(async () => {
+    if (resendCooldown > 0) return;
+    setResendCooldown(30);
+    await signInWithOtp(phone);
+  }, [phone, resendCooldown]);
+
+  const handleVerify = async (code: string) => {
     setLoading(true);
-    setTimeout(() => {
-      window.location.href = "/dashboard";
-    }, 1000);
+    try {
+      const result = await verifyOtp(phone, code);
+      if (result.error) {
+        setErrors({ otp: result.error });
+        setLoading(false);
+        return;
+      }
+      router.push(redirectTo ?? "/dashboard");
+      router.refresh();
+    } catch {
+      setErrors({ otp: "Verification failed. Please try again." });
+      setLoading(false);
+    }
   };
 
   return (
@@ -202,8 +255,12 @@ export default function LoginPage() {
 
           <p className="mt-6 text-sm text-[var(--color-text-muted)]">
             Didn&apos;t receive the code?{" "}
-            <button className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer">
-              Resend
+            <button
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
+              className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend"}
             </button>
           </p>
 
@@ -216,5 +273,13 @@ export default function LoginPage() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="h-64 flex items-center justify-center"><div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-copper)]/30 border-t-[var(--color-copper)]" /></div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

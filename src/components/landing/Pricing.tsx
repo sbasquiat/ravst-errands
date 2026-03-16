@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import ScrollReveal from "@/components/ui/ScrollReveal";
 
 const tiers = [
   {
     name: "Returns & Drop-offs",
     from: "€7",
+    href: "/book/returns",
     description: "Parcel returns, post office drops, document deliveries",
     includes: [
       "Pickup from your location",
@@ -18,6 +20,7 @@ const tiers = [
   {
     name: "Pickup → Drop Handoffs",
     from: "€9",
+    href: "/book/handoffs",
     description: "Keys, documents, and small items between two locations",
     includes: [
       "Pickup with photo proof",
@@ -31,6 +34,7 @@ const tiers = [
   {
     name: "Queue & Collect",
     from: "€10",
+    href: "/book/collect",
     description: "Click & collect pickups, queueing for collection tasks",
     includes: [
       "Runner queues on your behalf",
@@ -119,15 +123,16 @@ export default function Pricing() {
                   ))}
                 </ul>
 
-                <button
-                  className={`w-full rounded-full py-3 text-sm font-semibold transition-all duration-300 cursor-pointer ${
+                <Link
+                  href={tier.href}
+                  className={`block w-full rounded-full py-3 text-sm font-semibold text-center transition-all duration-300 ${
                     tier.featured
                       ? "bg-[var(--color-copper)] text-white hover:bg-[var(--color-copper-hover)] hover:shadow-[0_8px_30px_-8px_rgba(180,83,9,0.4)]"
                       : "border border-[var(--color-border)] text-[var(--color-text)] hover:border-[var(--color-copper)] hover:text-[var(--color-copper)]"
                   }`}
                 >
                   Get Instant Quote
-                </button>
+                </Link>
               </div>
             </ScrollReveal>
           ))}
@@ -153,12 +158,12 @@ export default function Pricing() {
                 Bundle your errands with a monthly plan and save up to 30%. Perfect for
                 parents, landlords, and busy professionals.
               </p>
-              <button className="btn-secondary">
+              <Link href="/pricing" className="btn-secondary">
                 View Subscription Plans
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                   <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              </button>
+              </Link>
             </div>
           </div>
         </ScrollReveal>

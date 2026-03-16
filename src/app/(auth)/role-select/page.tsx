@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { setUserRole } from "@/lib/supabase/actions";
 
 type Role = "customer" | "runner" | null;
 
@@ -43,14 +45,23 @@ const roles = [
 export default function RoleSelectPage() {
   const [selected, setSelected] = useState<Role>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const router = useRouter();
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!selected) return;
     setLoading(true);
-    setTimeout(() => {
-      // Simulate navigation based on role
-      window.location.href = selected === "customer" ? "/dashboard" : "/runner/onboarding";
-    }, 600);
+    setError("");
+
+    const result = await setUserRole(selected);
+
+    if (result.error) {
+      setError(result.error);
+      setLoading(false);
+      return;
+    }
+
+    router.push(result.redirectTo ?? "/dashboard");
   };
 
   return (
@@ -166,6 +177,10 @@ export default function RoleSelectPage() {
           </>
         )}
       </motion.button>
+
+      {error && (
+        <p className="mt-3 text-center text-sm text-red-600">{error}</p>
+      )}
 
       <p className="mt-4 text-center text-xs text-[var(--color-text-light)]">
         You can change your role anytime from settings.
