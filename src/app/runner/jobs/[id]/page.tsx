@@ -26,10 +26,18 @@ export default async function RunnerJobDetailPage({
 
   if (!errand) notFound();
 
-  const [messages, proofs] = await Promise.all([
-    getErrandMessages(id),
-    getErrandProofs(id),
-  ]);
+  let messages: Awaited<ReturnType<typeof getErrandMessages>> = [];
+  let proofs: Awaited<ReturnType<typeof getErrandProofs>> = [];
+
+  try {
+    [messages, proofs] = await Promise.all([
+      getErrandMessages(id),
+      getErrandProofs(id),
+    ]);
+  } catch (err) {
+    console.error("Failed to load messages/proofs:", err);
+    // Continue with empty arrays — page still renders
+  }
 
   return (
     <RunnerJobDetail

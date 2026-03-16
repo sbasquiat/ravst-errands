@@ -111,10 +111,18 @@ export async function setUserRole(role: "customer" | "runner") {
 
   if (!user) return { error: "Not authenticated" };
 
+  // Upsert to handle edge case where profile row is missing
   const { error } = await supabase
     .from("profiles")
-    .update({ role })
-    .eq("id", user.id);
+    .upsert(
+      {
+        id: user.id,
+        role,
+        email: user.email ?? "",
+        full_name: user.user_metadata?.full_name ?? "",
+      },
+      { onConflict: "id" }
+    );
 
   if (error) return { error: error.message };
 

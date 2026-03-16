@@ -23,11 +23,20 @@ export default async function ErrandDetailPage({
     redirect("/dashboard");
   }
 
-  const [timeline, proofs, messages] = await Promise.all([
-    getErrandTimeline(id),
-    getErrandProofs(id),
-    getErrandMessages(id),
-  ]);
+  let timeline: Awaited<ReturnType<typeof getErrandTimeline>> = [];
+  let proofs: Awaited<ReturnType<typeof getErrandProofs>> = [];
+  let messages: Awaited<ReturnType<typeof getErrandMessages>> = [];
+
+  try {
+    [timeline, proofs, messages] = await Promise.all([
+      getErrandTimeline(id),
+      getErrandProofs(id),
+      getErrandMessages(id),
+    ]);
+  } catch (err) {
+    console.error("Failed to load errand details:", err);
+    // Continue with empty arrays — page still renders
+  }
 
   return (
     <ErrandDetail
