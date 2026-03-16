@@ -419,8 +419,8 @@ export async function acceptJob(errandId: string) {
     .from("errands")
     .update({
       runner_id: user.id,
-      status: "runner_assigned" as Enums<"errand_status">,
-      current_phase: "job_details",
+      status: "in_progress" as Enums<"errand_status">,
+      current_phase: "en_route_pickup",
     })
     .eq("id", errandId)
     .eq("status", "pending"); // Only accept if still pending

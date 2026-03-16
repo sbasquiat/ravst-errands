@@ -97,10 +97,14 @@ function getInitials(name: string) {
 
 function getInitialPhase(errand: ErrandWithDetails): JobPhase {
   if (errand.status === "completed") return "complete";
+  // If runner is assigned but phase is still "job_details", advance to en_route
+  const isAssigned = ["runner_assigned", "in_progress"].includes(errand.status) && errand.runner_id;
   if (errand.current_phase && phaseSteps.some((s) => s.key === errand.current_phase)) {
+    // Don't get stuck on job_details when already assigned
+    if (errand.current_phase === "job_details" && isAssigned) return "en_route_pickup";
     return errand.current_phase as JobPhase;
   }
-  if (["runner_assigned", "in_progress"].includes(errand.status)) return "en_route_pickup";
+  if (isAssigned) return "en_route_pickup";
   return "job_details";
 }
 
@@ -194,7 +198,6 @@ export default function RunnerJobDetail({
     } else {
       setAccepted(true);
       setPhase("en_route_pickup");
-      await updateErrandPhase(errand.id, "en_route_pickup", "in_progress");
       toast.success("Job accepted! Head to the pickup location.");
     }
     setLoading(false);
