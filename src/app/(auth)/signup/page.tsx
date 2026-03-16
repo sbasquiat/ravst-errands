@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthInput from "@/components/auth/AuthInput";
-import { signUpWithEmail } from "@/lib/supabase/actions";
+import { signUpWithEmail, resendConfirmationEmail } from "@/lib/supabase/actions";
 
 type Step = "details" | "verify";
 
@@ -18,6 +18,21 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resent, setResent] = useState(false);
+
+  const handleResend = useCallback(async () => {
+    if (resendCooldown > 0) return;
+    setResendCooldown(60);
+    const result = await resendConfirmationEmail(email);
+    if (!result.error) setResent(true);
+    const timer = setInterval(() => {
+      setResendCooldown((c) => {
+        if (c <= 1) { clearInterval(timer); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+  }, [email, resendCooldown]);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -42,8 +57,15 @@ export default function SignupPage() {
         setLoading(false);
         return;
       }
-      setStep("verify");
-      setLoading(false);
+      if (result.needsConfirmation) {
+        // Email confirmation enabled — show "check your email" screen
+        setStep("verify");
+        setLoading(false);
+      } else {
+        // Auto-confirm on — user is already signed in, go to role select
+        router.push("/role-select");
+        router.refresh();
+      }
     } catch {
       setErrors({ email: "Something went wrong. Please try again." });
       setLoading(false);
@@ -147,21 +169,36 @@ export default function SignupPage() {
           >
             Check your email
           </h1>
-          <p className="mt-2 mb-8 text-sm text-[var(--color-text-muted)]">
+          <p className="mt-2 mb-2 text-sm text-[var(--color-text-muted)]">
             We sent a confirmation link to{" "}
             <span className="font-medium text-[var(--color-text)]">{email}</span>
           </p>
-
-          <p className="text-sm text-[var(--color-text-muted)]">
-            Click the link in the email to verify your account, then{" "}
-            <a href="/login" className="font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors">
-              log in
-            </a>.
+          <p className="mb-8 text-xs text-[var(--color-text-light)]">
+            Can&apos;t find it? Check your spam or junk folder.
           </p>
+
+          <div className="rounded-xl bg-[var(--color-cream-dark)] p-4 text-left text-sm text-[var(--color-text-muted)] space-y-2">
+            <p><span className="font-medium text-[var(--color-charcoal)]">1.</span> Open the email from Ravst</p>
+            <p><span className="font-medium text-[var(--color-charcoal)]">2.</span> Click the confirmation link</p>
+            <p><span className="font-medium text-[var(--color-charcoal)]">3.</span> You&apos;ll be signed in automatically</p>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            {resent && (
+              <p className="text-sm text-green-600 font-medium">Email resent successfully!</p>
+            )}
+            <button
+              onClick={handleResend}
+              disabled={resendCooldown > 0}
+              className="text-sm font-semibold text-[var(--color-copper)] hover:text-[var(--color-copper-hover)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend confirmation email"}
+            </button>
+          </div>
 
           <button
             onClick={() => setStep("details")}
-            className="mt-6 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+            className="mt-4 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
           >
             &larr; Back to sign up
           </button>

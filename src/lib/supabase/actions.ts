@@ -6,7 +6,6 @@ import { createClient } from "./server";
 import type { Enums, TablesInsert } from "@/types/database";
 import { sendEmail } from "@/lib/email/send";
 import {
-  welcomeEmail,
   bookingConfirmationEmail,
   runnerAssignedEmail,
   errandCompletedEmail,
@@ -34,23 +33,17 @@ export async function signUpWithEmail(
     password,
     options: {
       data: { full_name: name },
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/callback`,
     },
   });
 
   if (error) return { error: error.message };
 
-  // Send welcome email (log errors but don't block signup)
-  try {
-    const emailContent = welcomeEmail(name || "there");
-    const result = await sendEmail(email, emailContent.subject, emailContent.html, emailContent.text);
-    if (result.error) {
-      console.error("[Email] Welcome email failed:", result.error);
-    }
-  } catch (e) {
-    console.error("[Email] Welcome email error:", e);
-  }
+  // Supabase handles the confirmation email automatically
+  // Check if email confirmation is required (user won't have a session yet)
+  const needsConfirmation = !data.session;
 
-  return { data, error: null };
+  return { data, needsConfirmation, error: null };
 }
 
 export async function signInWithEmail(email: string, password: string) {
@@ -71,6 +64,19 @@ export async function signInWithEmail(email: string, password: string) {
 
   const role = profile?.role ?? "customer";
   return { data, role, error: null };
+}
+
+export async function resendConfirmationEmail(email: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/callback`,
+    },
+  });
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 export async function resetPasswordRequest(email: string) {
