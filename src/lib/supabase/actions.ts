@@ -39,12 +39,15 @@ export async function signUpWithEmail(
 
   if (error) return { error: error.message };
 
-  // Send welcome email (fire-and-forget)
+  // Send welcome email (log errors but don't block signup)
   try {
     const emailContent = welcomeEmail(name || "there");
-    sendEmail(email, emailContent.subject, emailContent.html, emailContent.text);
+    const result = await sendEmail(email, emailContent.subject, emailContent.html, emailContent.text);
+    if (result.error) {
+      console.error("[Email] Welcome email failed:", result.error);
+    }
   } catch (e) {
-    console.error("[Email] Welcome email failed:", e);
+    console.error("[Email] Welcome email error:", e);
   }
 
   return { data, error: null };
