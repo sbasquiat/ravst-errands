@@ -4,7 +4,6 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import AuthInput from "@/components/auth/AuthInput";
-import SocialLoginButtons from "@/components/auth/SocialLoginButtons";
 import { signInWithEmail } from "@/lib/supabase/actions";
 
 function LoginContent() {
@@ -116,16 +115,6 @@ function LoginContent() {
           )}
         </button>
       </form>
-
-      {/* Divider */}
-      <div className="my-6 flex items-center gap-3">
-        <div className="h-px flex-1 bg-[var(--color-border-light)]" />
-        <span className="text-xs text-[var(--color-text-light)]">or</span>
-        <div className="h-px flex-1 bg-[var(--color-border-light)]" />
-      </div>
-
-      {/* Social login */}
-      <SocialLoginButtons />
 
       <p className="mt-8 text-center text-sm text-[var(--color-text-muted)]">
         Don&apos;t have an account?{" "}

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthInput from "@/components/auth/AuthInput";
-import SocialLoginButtons from "@/components/auth/SocialLoginButtons";
 import { signUpWithEmail } from "@/lib/supabase/actions";
 
 type Step = "details" | "verify";
@@ -119,16 +118,6 @@ export default function SignupPage() {
               )}
             </button>
           </form>
-
-          {/* Divider */}
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-[var(--color-border-light)]" />
-            <span className="text-xs text-[var(--color-text-light)]">or</span>
-            <div className="h-px flex-1 bg-[var(--color-border-light)]" />
-          </div>
-
-          {/* Social login */}
-          <SocialLoginButtons />
 
           <p className="mt-8 text-center text-sm text-[var(--color-text-muted)]">
             Already have an account?{" "}

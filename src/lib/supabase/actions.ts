@@ -70,20 +70,6 @@ export async function signInWithEmail(email: string, password: string) {
   return { data, role, error: null };
 }
 
-export async function signInWithOAuth(provider: "google" | "apple") {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
-    options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/auth/callback`,
-    },
-  });
-
-  if (error) return { error: error.message };
-  if (data.url) redirect(data.url);
-  return { error: null };
-}
-
 export async function resetPasswordRequest(email: string) {
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
