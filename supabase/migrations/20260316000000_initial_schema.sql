@@ -917,7 +917,7 @@ create index idx_subscriptions_active on subscriptions (customer_id, status)
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
-  ('proof-photos', 'proof-photos', false, 10485760, array['image/jpeg', 'image/png', 'image/webp']),
+  ('proof-photos', 'proof-photos', true, 10485760, array['image/jpeg', 'image/png', 'image/webp']),
   ('runner-documents', 'runner-documents', false, 10485760, array['image/jpeg', 'image/png', 'application/pdf']),
   ('avatars', 'avatars', true, 5242880, array['image/jpeg', 'image/png', 'image/webp']),
   ('dispute-evidence', 'dispute-evidence', false, 10485760, array['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])

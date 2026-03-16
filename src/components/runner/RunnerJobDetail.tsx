@@ -136,12 +136,21 @@ export default function RunnerJobDetail({
   const [loading, setLoading] = useState(false);
   const seenMsgIds = useRef(new Set(initialMessages.map((m) => m.id)));
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
   }, [messages, chatOpen]);
+
+  // Auto-close chat after 30 seconds of inactivity
+  useEffect(() => {
+    if (!chatOpen) return;
+    clearTimeout(chatTimeoutRef.current);
+    chatTimeoutRef.current = setTimeout(() => setChatOpen(false), 30_000);
+    return () => clearTimeout(chatTimeoutRef.current);
+  }, [chatOpen, messages, newMessage]);
 
   // Location tracking — start when in_progress, stop on cleanup/completion
   useEffect(() => {
